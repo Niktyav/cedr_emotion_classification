@@ -49,10 +49,7 @@
 ```text
 .
 ├── notebooks/
-├── src/
-├── configs/
-├── reports/
-└── scripts/
+└── src/
 ```
 
 ## Установка
@@ -70,7 +67,7 @@ python src/train.py
 ## Инференс
 
 ```bash
-python scripts/predict.py
+python src/predict.py
 ```
 
 ## Технологии
