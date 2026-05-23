@@ -1,0 +1,29 @@
+# Core ML / DL
+torch>=2.0.0
+transformers>=4.35.0
+datasets>=2.14.0
+torchvision>=0.15.0
+
+# Russian NLP
+pymorphy3>=1.0.0
+emoji>=2.8.0
+
+# Dimensionality reduction (EDA)
+umap-learn==0.5.7
+
+# Classical ML + metrics
+scikit-learn==1.3.2
+scipy>=1.11.0
+
+# Data + visualization
+numpy>=1.24.0
+pandas>=2.0.0
+matplotlib>=3.7.0
+seaborn>=0.12.0
+
+# NLP utilities
+nltk>=3.8.0
+
+# Jupyter (for local run)
+jupyter>=1.0.0
+ipywidgets>=8.0.0
