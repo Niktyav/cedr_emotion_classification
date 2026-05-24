@@ -102,7 +102,7 @@
 | **BERTA+ (FocalLoss + thr)** | **0.93** | **0.92** | **0.86** | **0.89** | **0.79** | **0.88** |
 ## Основной вывод
 
-ЭксЭксперименты показали, что contextual transformer embeddings уже содержат большую часть психолингвистических сигналов, а handcrafted features и CRF не улучшают качество multilabel emotion classification на данном датасете (≈1.5% multi-label примеров недостаточно для обучения матрицы T).  
+Эксперименты показали, что contextual transformer embeddings уже содержат большую часть психолингвистических сигналов, а handcrafted features и CRF не улучшают качество multilabel emotion classification на данном датасете (≈1.5% multi-label примеров недостаточно для обучения матрицы T).  Но усложнение архитектуры классификатора и пороги по классам позволяют повысить метрики.
 
 ## Структура проекта
 
@@ -113,6 +113,8 @@
 ├── src/
 │   ├── train.py                            # Обучение BERTA+
 │   └── predict.py                          # Инференс
+├── report/
+│   └── report.pdf                          # отчет
 ├── checkpoints/                            # Создаётся после train.py
 │   ├── best_model.pt                       # Веса лучшей модели
 │   ├── thresholds.json                     # Per-emotion пороги
