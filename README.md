@@ -13,6 +13,8 @@
 | Focal Loss | ✅ +0.01 mean Macro F1 |
 | Focal Loss + per-emotion threshold tuning улучшат результат для редких классов | ✅ +0.01(fear) |
 
+
+
 ## Датасет
 
 [`sagteam/cedr_v1`](https://huggingface.co/datasets/sagteam/cedr_v1) — 9 410 русскоязычных текстов из lj, lenta, twitter с разметкой по 5 эмоциям.
@@ -26,6 +28,64 @@
 | anger | 4 | ~5% |
 | neutral | — | ~40% |
 
+
+## Архитектуры моделей
+
+
+### 1. BERTA + лингвистические признаки + CRF
+
+```
+Текст  →  BERTA [CLS] ∈ ℝ⁷⁶⁸
+                              ⊕ concat
+       →  Лингв. признаки f ∈ ℝ⁴²:
+              • Лексические (17): RuSentiLex pos/neg + эмо-словари × 5 классов
+              • Психолингвистика (7): местоимения 1/2 лица, отрицания,
+                интенсификаторы, каузальные коннекторы, вопрос, восклицание
+              • Морфологические (11): POS-распределение, время глагола (pymorphy3)
+              • Семантика (7): счётчики по словарям эмоций
+
+       →  [h ; f] ∈ ℝ⁸¹⁰  →  LayerNorm  →  Dropout(0.1)
+       →  Linear(810 → 5)  →  logits ∈ ℝ⁵
+
+       →  Document-level CRF:
+              score(y) = Σᵢ ψᵢ·yᵢ  +  Σᵢ﹤ⱼ Tᵢⱼ·yᵢ·yⱼ
+              2⁵ = 32 конфигурации, точный перебор
+       →  argmax P(y | x)  →  5 бинарных предсказаний
+```
+
+**Результат**: не улучшает BERTA (Δ = −0.01). Подробный разбор — в ноутбуке.
+
+---
+
+### 2. BERTA+ ← **основная модель** (`src/train.py`)
+
+```
+Текст  →  Tokenizer (max_len=128)
+       →  sergeyzh/BERTA  (12 слоёв, 768 мерных, заморожен частично)
+       →  [CLS] ∈ ℝ⁷⁶⁸
+       →  Linear(768 → 256)
+       →  LayerNorm(256)
+       →  GELU
+       →  Dropout(0.3)
+       →  Linear(256 → 5)
+       →  logits ∈ ℝ⁵
+
+       ↓ при обучении:
+       →  Focal Loss  FL(pₜ) = −(1−pₜ)² · log(pₜ),  γ = 2.0
+              (снижает вес уверенных предсказаний neutral,
+               фокусирует обучение на трудных примерах anger/fear)
+
+       ↓ при инференсе:
+       →  Sigmoid × 5
+       →  per-emotion threshold:
+              joy=0.40, sadness=0.40, surprise=0.45, fear=0.50, anger=0.35
+       →  5 бинарных предсказаний
+```
+
+**Обучение**: AdamW lr=2e-5, weight_decay=0.01, linear warmup, early stopping patience=2, batch=32, seed=42.  
+**Threshold tuning**: сетка 0.20–0.75 с шагом 0.05, оптимизация по val Macro F1 для каждой эмоции отдельно.
+
+---
 ## Результаты
 
 *Формат метрик: per-emotion Macro F1, как в оригинальной статье (Sboev et al. 2021, Table #2)*
@@ -39,10 +99,10 @@
 | TF-IDF + LogReg (наш) | 0.71 | 0.75 | 0.79 | 0.82 | 0.68 | 0.75 |
 | BERTA fine-tune | 0.92 | 0.92 | 0.86 | 0.88 | 0.78 | **0.87** |
 | BERTA + лингв. + CRF | 0.93 | 0.91 | 0.86 | 0.88 | 0.78 | 0.87 |
-| BERTA+ (FocalLoss + thr) | 0.93 | 0.92 | 0.86 | 0.89 | 0.79 | **0.88** |
+| **BERTA+ (FocalLoss + thr)** | **0.93** | **0.92** | **0.86** | **0.89** | **0.79** | **0.88** |
 ## Основной вывод
 
-Эксперименты показали, что contextual transformer embeddings уже содержат большую часть психолингвистических сигналов, а handcrafted features и CRF не улучшают качество multilabel emotion classification.
+ЭксЭксперименты показали, что contextual transformer embeddings уже содержат большую часть психолингвистических сигналов, а handcrafted features и CRF не улучшают качество multilabel emotion classification на данном датасете (≈1.5% multi-label примеров недостаточно для обучения матрицы T).  
 
 ## Структура проекта
 
@@ -264,6 +324,18 @@ for r in results:
 - ASL/Focal Loss
 - dynamic threshold tuning
 - emotion-aware augmentation
+
+## Цитирование
+
+```bibtex
+@dataset{cedr2021,
+  author = {Sboev, Alexander and others},
+  title  = {CEDR: Corpus for Emotions Detection in Russian},
+  year   = {2021},
+  url    = {https://huggingface.co/datasets/sagteam/cedr_v1}
+}
+```
+
 
 ## License
 
