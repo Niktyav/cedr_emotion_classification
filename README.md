@@ -49,35 +49,213 @@
 ```text
 .
 ├── notebooks/
-└── src/
+│   └── cedr_emotion_classification.ipynb   # Основной ноутбук (все эксперименты)
+├── src/
+│   ├── train.py                            # Обучение BERTA+
+│   └── predict.py                          # Инференс
+├── checkpoints/                            # Создаётся после train.py
+│   ├── best_model.pt                       # Веса лучшей модели
+│   ├── thresholds.json                     # Per-emotion пороги
+│   └── tokenizer/                          # Сохранённый токенайзер
+├── LICENSE
+├── requirements.txt
+└── README.md
 ```
 
 ## Установка
 
 ```bash
+git clone https://github.com/Niktyav/cedr_emotion_classification.git
+cd cedr_emotion_classification
 pip install -r requirements.txt
 ```
 
-## Запуск обучения
+> **GPU рекомендуется.** Обучение на CPU займёт ~2 ч, на GPU  ~5–15 мин.
 
+---
+
+## Обучение (`train.py`)
+
+Скачивает CEDR v1 с HuggingFace, обучает BERTA+ и сохраняет модель в `checkpoints/`.
+
+**Запуск с параметрами по умолчанию:**
 ```bash
 python src/train.py
 ```
 
-## Инференс
+**Все доступные параметры:**
+```bash
+python src/train.py \
+  --model_name   sergeyzh/BERTA \   # HuggingFace model id
+  --output_dir   checkpoints \      # куда сохранять модель
+  --epochs       5 \                # максимум эпох (early stopping patience=2)
+  --batch_size   32 \               # размер батча
+  --max_len      128 \              # максимальная длина токенов
+  --lr           2e-5 \             # learning rate (AdamW)
+  --weight_decay 0.01 \             # L2 regularization
+  --hidden       256 \              # размер скрытого слоя классификатора
+  --dropout      0.3 \              # dropout rate
+  --focal_gamma  2.0 \              # gamma для Focal Loss
+  --patience     2 \                # early stopping patience
+  --val_size     0.1 \              # доля валидации из train
+  --seed         42
+```
+
+**Что происходит при обучении:**
+1. Загружается `sagteam/cedr_v1` с HuggingFace (автоматически)
+2. Train сплит делится 90/10 на train/val
+3. Обучается BERTA+ с Focal Loss (γ=2) и early stopping
+4. После обучения выполняется per-emotion threshold tuning на val
+5. Финальная оценка на test в формате оригинальной статьи
+6. Сохраняется в `checkpoints/`: `best_model.pt`, `thresholds.json`, `tokenizer/`
+
+**Ожидаемый вывод:**
+```
+Загрузка CEDR v1...
+Train: 6 775 | Val: 753 | Test: 1 882
+
+Обучение BERTA+ (5 эпох, patience=2):
+  Epoch 01/05 | loss=0.1823 | val Macro F1=0.7912
+  Epoch 02/05 | loss=0.1241 | val Macro F1=0.8534
+  ...
+
+Threshold tuning на валидации:
+  joy       : thr=0.40  val Macro F1=0.9301
+  sadness   : thr=0.40  val Macro F1=0.9238
+  surprise  : thr=0.45  val Macro F1=0.8599
+  fear      : thr=0.50  val Macro F1=0.8880
+  anger     : thr=0.35  val Macro F1=0.7930
+
+[BERTA+ (per-emo thr)] Mean Macro F1 = 0.8771
+  joy       : 0.9296
+  sadness   : 0.9150
+  ...
+
+Сохранено:
+  Модель:     checkpoints/best_model.pt
+  Пороги:     checkpoints/thresholds.json
+  Токенайзер: checkpoints/tokenizer/
+```
+
+---
+
+## Инференс (`predict.py`)
+
+Загружает обученную модель из `checkpoints/` и предсказывает эмоции.
+
+### Один текст
+
+```bash
+python src/predict.py --text "Как же хорошо, когда всё получается!"
+```
+
+Вывод:
+```
+Загрузка модели: sergeyzh/BERTA
+  val Macro F1 при сохранении: 0.8771
+Пороги: {'joy': 0.4, 'sadness': 0.4, 'surprise': 0.45, 'fear': 0.5, 'anger': 0.35}
+Модель готова ✓
+
+Текст:   Как же хорошо, когда всё получается!
+Эмоции:  joy
+Вероятности:
+  ✓ joy       : ████████████████░░░░ 0.823  (thr=0.40)
+    sadness   : ██░░░░░░░░░░░░░░░░░░ 0.041  (thr=0.40)
+    surprise  : ███░░░░░░░░░░░░░░░░░ 0.112  (thr=0.45)
+    fear      : █░░░░░░░░░░░░░░░░░░░ 0.021  (thr=0.50)
+    anger     : █░░░░░░░░░░░░░░░░░░░ 0.015  (thr=0.35)
+```
+
+### CSV-файл
+
+```bash
+python src/predict.py \
+  --input_file  texts.csv \         # CSV с колонкой 'text'
+  --output_file predictions.csv     # куда сохранить результаты
+```
+
+Формат `texts.csv`:
+```csv
+text
+Как же хорошо, когда всё получается!
+Мне очень грустно сегодня
+Боюсь, что ничего не получится
+```
+
+Формат `predictions.csv`:
+```csv
+text,emotions,prob_joy,prob_sadness,prob_surprise,prob_fear,prob_anger
+Как же хорошо...,joy,0.823,0.041,0.112,0.021,0.015
+Мне очень грустно...,sadness,0.031,0.891,0.044,0.187,0.022
+```
+
+### Интерактивный режим
 
 ```bash
 python src/predict.py
 ```
 
+```
+Интерактивный режим. Введите текст (или 'exit' для выхода):
+
+>>> Боюсь, что всё пошло не так
+Текст:   Боюсь, что всё пошло не так
+Эмоции:  fear, sadness
+
+>>> exit
+```
+
+### Все параметры predict.py
+
+```bash
+python src/predict.py \
+  --checkpoint_dir  checkpoints \   # папка с моделью (default: checkpoints)
+  --text            "Текст" \       # один текст (опционально)
+  --input_file      texts.csv \     # CSV-файл (опционально)
+  --output_file     out.csv \       # файл для результатов (опционально)
+  --text_column     text \          # название колонки в CSV (default: text)
+  --batch_size      32 \            # батч при обработке файла
+  --no_probs \                      # не выводить вероятности
+  --device          cuda            # cuda | cpu (default: авто)
+```
+
+### Использование как библиотеки
+
+```python
+from src.predict import EmotionPredictor
+
+predictor = EmotionPredictor("checkpoints")
+
+# Один текст
+result = predictor.predict("Мне очень грустно сегодня")
+print(result["emotions"])        # ['sadness']
+print(result["probabilities"])   # {'joy': 0.03, 'sadness': 0.89, ...}
+
+# Батч текстов
+results = predictor.predict_batch(
+    ["Как хорошо!", "Боюсь ошибиться"],
+    batch_size=32,
+    return_probs=True,
+)
+for r in results:
+    print(r["text"], "→", r["emotions"])
+```
+
+---
+
 ## Технологии
 
-- PyTorch
-- Transformers
-- scikit-learn
-- HuggingFace
-- pandas
-- numpy
+| Библиотека | Версия | Назначение |
+|-----------|--------|------------|
+| PyTorch | ≥ 2.0 | Обучение моделей |
+| Transformers | ≥ 4.35 | BERTA, токенайзер |
+| datasets | ≥ 2.14 | Загрузка CEDR |
+| pymorphy3 | ≥ 1.0 | Лемматизация русского текста |
+| scikit-learn | 1.3.2 | Метрики, TF-IDF |
+| umap-learn | 0.5.7 | Визуализация эмбеддингов |
+| emoji | ≥ 2.8 | Конвертация эмодзи |
+
+
 
 ## Направления развития
 
