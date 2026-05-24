@@ -10,7 +10,7 @@
 |----------|-----------|
 | BERTA fine-tune превзойдёт ELMo-ансамбль из оригинальной статьи | ✅ +0.103 mean Macro F1 |
 | CRF-слой улучшит качество за счёт моделирования зависимостей между метками | ❌ −0.01 (объяснение в ноутбуке) |
-| Focal Loss | ✅ +0.01 mean Macro F1 |
+| BERTA+  Focal Loss | ✅ +0.01 mean Macro F1 относительно  BERTA fine-tune|
 | Focal Loss + per-emotion threshold tuning улучшат результат для редких классов | ✅ +0.01(fear) |
 
 
